@@ -1,20 +1,21 @@
 import requests
 import datetime as dt
+import smtplib
 
 STOCK = "TSLA"
 COMPANY_NAME = "Tesla Inc"
 
 # ---------------------------- DETECTING STOCK BIG CHANGES ------------------------------- #
-url = 'https://www.alphavantage.co/query'
-parameters = {
+stocks_url = 'https://www.alphavantage.co/query'
+stocks_parameters = {
     "function": "TIME_SERIES_DAILY_ADJUSTED",
     "symbol": STOCK,
     "apikey": "GB0YHQ6O8QMY7CVL",
 }
-connection = requests.get(url=url, params=parameters)
-connection.raise_for_status()
-data = connection.json()
-time_series = data["Time Series (Daily)"]
+stocks_response = requests.get(url=stocks_url, params=stocks_parameters)
+stocks_response.raise_for_status()
+stocks_data = stocks_response.json()
+time_series = stocks_data["Time Series (Daily)"]
 
 today = dt.date.today()
 yesterday = today - dt.timedelta(days=1)
@@ -26,25 +27,61 @@ the_day_before_close = float(time_series[str(the_day_before)]["4. close"])
 gap = abs(yesterday_close - the_day_before_close)
 gap_percentage = (gap * 100) / the_day_before_close
 
+big_change = None
 if gap_percentage >= 5:
-    print("Get News")
+    big_change = True
+    if the_day_before_close > yesterday_close:
+        emoji = "⬆️"
+    else:
+        emoji = "⬇️"
+
 
 # ---------------------------- GETTING THE COMPANY'S LATEST NEWS ------------------------------- #
-## STEP 2: Use https://newsapi.org
-# Instead of printing ("Get News"), actually get the first 3 news pieces for the COMPANY_NAME. 
+news_url = "https://newsapi.org/v2/top-headlines"
+news_parameters = {
+    "q": COMPANY_NAME,
+    "apiKey": "afd3381f3c394b47997d3fd7bc2beadb",
+}
 
-## STEP 3: Use https://www.twilio.com
-# Send a seperate message with the percentage change and each article's title and description to your phone number. 
+news_response = requests.get(url=news_url, params=news_parameters)
+news_response.raise_for_status()
+news_data = news_response.json()
+news_num = news_data["totalResults"]
 
+if big_change:
+    if news_num > 3:
+        # get the first 3 pieces of news
+        news_list = (news_data["articles"])[:3]
+    elif 3 >= news_num > 0:
+        # get all of them
+        news_list = news_data["articles"]
+    else:
+        news_list = []
 
-#Optional: Format the SMS message like this: 
-"""
-TSLA: 🔺2%
-Headline: Were Hedge Funds Right About Piling Into Tesla Inc. (TSLA)?. 
-Brief: We at Insider Monkey have gone over 821 13F filings that hedge funds and prominent investors are required to file by the SEC The 13F filings show the funds' and investors' portfolio positions as of March 31st, near the height of the coronavirus market crash.
-or
-"TSLA: 🔻5%
-Headline: Were Hedge Funds Right About Piling Into Tesla Inc. (TSLA)?. 
-Brief: We at Insider Monkey have gone over 821 13F filings that hedge funds and prominent investors are required to file by the SEC The 13F filings show the funds' and investors' portfolio positions as of March 31st, near the height of the coronavirus market crash.
-"""
+# ---------------------------- SENDING THE EMAIL ------------------------------- #
+my_email = "pythontest32288@gmail.com"
+my_password = "gsrfzucledwimgqp"
 
+if big_change:
+    with smtplib.SMTP("smtp.gmail.com") as connection:
+        connection.starttls()
+        connection.login(user=my_email, password=my_password)
+        if news_num == 0:
+            connection.sendmail(
+                from_addr=my_email,
+                to_addrs="omarmobarak53@gmail.com",
+                msg=f"Subject: Your {COMPANY_NAME} stocks are {emoji}{gap_percentage}%"
+                    "\n\nRelative Headlines:\n"
+                    "It seems that there aren't any breaking news regarding your stock."
+            )
+        else:
+            for news_piece in news_list:
+                connection.sendmail(
+                    from_addr=my_email,
+                    to_addrs="omarmobarak53@gmail.com",
+                    msg=f"Subject: Your {COMPANY_NAME} stocks are {emoji}{gap_percentage}%"
+                        "\n\nRelative Headlines:\n"
+                        f"Headline: {news_piece['title']}\n"
+                        f"Brief: {news_piece['description']}\n"
+                        f"Url: {news_piece['url']}"
+                )
